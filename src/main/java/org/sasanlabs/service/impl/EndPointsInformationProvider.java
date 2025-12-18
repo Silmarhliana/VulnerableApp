@@ -41,6 +41,8 @@ public class EndPointsInformationProvider implements IEndPointsInformationProvid
 
     private VulnerableAppProperties vulnerableAppProperties;
 
+    private static final String TEMPLATE_PATH = "/VulnerableApp/templates/";
+
     int port;
 
     public EndPointsInformationProvider(
@@ -148,7 +150,7 @@ public class EndPointsInformationProvider implements IEndPointsInformationProvid
                 Arrays.asList(
                         new ResourceURI(
                                 false,
-                                "/VulnerableApp/templates/"
+                                TEMPLATE_PATH
                                         + facadeVulnerabilityDefinition.getName()
                                         + "/"
                                         + template
@@ -156,7 +158,7 @@ public class EndPointsInformationProvider implements IEndPointsInformationProvid
                                 ResourceType.CSS.name()),
                         new ResourceURI(
                                 false,
-                                "/VulnerableApp/templates/"
+                                TEMPLATE_PATH
                                         + facadeVulnerabilityDefinition.getName()
                                         + "/"
                                         + template
@@ -165,7 +167,7 @@ public class EndPointsInformationProvider implements IEndPointsInformationProvid
         resourceInformation.setHtmlResource(
                 new ResourceURI(
                         false,
-                        "/VulnerableApp/templates/"
+                        TEMPLATE_PATH
                                 + facadeVulnerabilityDefinition.getName()
                                 + "/"
                                 + template
