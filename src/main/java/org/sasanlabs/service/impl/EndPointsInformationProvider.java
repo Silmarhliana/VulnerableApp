@@ -175,79 +175,73 @@ public class EndPointsInformationProvider implements IEndPointsInformationProvid
     }
 
     @Override
-    public List<VulnerabilityDefinition> getVulnerabilityDefinitions()
-            throws JsonProcessingException {
+    public List<VulnerabilityDefinition> getVulnerabilityDefinitions() throws JsonProcessingException {
         List<VulnerabilityDefinition> vulnerabilityDefinitions = new ArrayList<>();
         Map<String, Object> nameVsCustomVulnerableEndPoint =
                 envUtils.getAllClassesAnnotatedWithVulnerableAppRestController();
+
         for (Map.Entry<String, Object> entry : nameVsCustomVulnerableEndPoint.entrySet()) {
-            String name = entry.getKey();
-            Class<?> clazz = entry.getValue().getClass();
-            if (clazz.isAnnotationPresent(VulnerableAppRestController.class)) {
-                VulnerableAppRestController vulnerableServiceRestEndPoint =
-                        clazz.getAnnotation(VulnerableAppRestController.class);
-                String description = vulnerableServiceRestEndPoint.descriptionLabel();
-                VulnerabilityDefinition facadeVulnerabilityDefinition =
-                        new VulnerabilityDefinition();
-                facadeVulnerabilityDefinition.setName(name);
-                facadeVulnerabilityDefinition.setId(name);
-                facadeVulnerabilityDefinition.setDescription(
-                        messageBundle.getString(description, null));
-                List<VulnerabilityType> facadeVulnerabilityTypes =
-                        new ArrayList<VulnerabilityType>();
-                facadeVulnerabilityDefinition.setVulnerabilityTypes(facadeVulnerabilityTypes);
-                Method[] methods = clazz.getDeclaredMethods();
-                for (Method method : methods) {
-                    VulnerableAppRequestMapping vulnLevel =
-                            method.getAnnotation(VulnerableAppRequestMapping.class);
-                    if (vulnLevel != null) {
-                        AttackVector[] attackVectors =
-                                method.getAnnotationsByType(AttackVector.class);
-                        VulnerabilityLevelDefinition facadeVulnerabilityLevelDefinition =
-                                new VulnerabilityLevelDefinition();
-                        facadeVulnerabilityLevelDefinition.setLevel(vulnLevel.value());
-                        facadeVulnerabilityLevelDefinition.setVariant(
-                                Variant.valueOf(vulnLevel.variant().name()));
-                        addFacadeResourceInformation(
-                                facadeVulnerabilityDefinition,
-                                facadeVulnerabilityLevelDefinition,
-                                vulnLevel.htmlTemplate());
-                        for (AttackVector attackVector : attackVectors) {
-                            List<VulnerabilityType> facadeLevelVulnerabilityTypes =
-                                    new ArrayList<VulnerabilityType>();
-                            org.sasanlabs.vulnerability.types.VulnerabilityType[]
-                                    vulnerabilityTypes = attackVector.vulnerabilityExposed();
-                            for (org.sasanlabs.vulnerability.types.VulnerabilityType
-                                    vulnerabilityType : vulnerabilityTypes) {
-                                facadeLevelVulnerabilityTypes.add(
-                                        new VulnerabilityType("Custom", vulnerabilityType.name()));
-                                if (null != vulnerabilityType.getCweID())
-                                    facadeLevelVulnerabilityTypes.add(
-                                            new VulnerabilityType(
-                                                    "CWE",
-                                                    String.valueOf(vulnerabilityType.getCweID())));
-                                if (null != vulnerabilityType.getWascID())
-                                    facadeLevelVulnerabilityTypes.add(
-                                            new VulnerabilityType(
-                                                    "WASC",
-                                                    String.valueOf(vulnerabilityType.getWascID())));
-                            }
-                            facadeVulnerabilityLevelDefinition
-                                    .getHints()
-                                    .add(
-                                            new VulnerabilityLevelHint(
-                                                    facadeLevelVulnerabilityTypes,
-                                                    messageBundle.getString(
-                                                            attackVector.description(), null)));
-                        }
-                        facadeVulnerabilityDefinition
-                                .getLevelDescriptionSet()
-                                .add(facadeVulnerabilityLevelDefinition);
-                    }
-                }
-                vulnerabilityDefinitions.add(facadeVulnerabilityDefinition);
-            }
+            processControllerEntry(entry, vulnerabilityDefinitions);
         }
         return vulnerabilityDefinitions;
+    }
+
+    private void processControllerEntry(Map.Entry<String, Object> entry, List<VulnerabilityDefinition> definitions) {
+        Class<?> clazz = entry.getValue().getClass();
+        if (clazz.isAnnotationPresent(VulnerableAppRestController.class)) {
+            VulnerableAppRestController annotation = clazz.getAnnotation(VulnerableAppRestController.class);
+            VulnerabilityDefinition facadeDef = createFacadeDefinition(entry.getKey(), annotation);
+
+            for (Method method : clazz.getDeclaredMethods()) {
+                processMethodMapping(method, facadeDef);
+            }
+            definitions.add(facadeDef);
+        }
+    }
+
+    private VulnerabilityDefinition createFacadeDefinition(String name, VulnerableAppRestController annotation) {
+        VulnerabilityDefinition facadeDef = new VulnerabilityDefinition();
+        facadeDef.setName(name);
+        facadeDef.setId(name);
+        facadeDef.setDescription(messageBundle.getString(annotation.descriptionLabel(), null));
+        facadeDef.setVulnerabilityTypes(new ArrayList<>());
+        return facadeDef;
+    }
+
+    private void processMethodMapping(Method method, VulnerabilityDefinition facadeDef) {
+        VulnerableAppRequestMapping vulnLevel = method.getAnnotation(VulnerableAppRequestMapping.class);
+        if (vulnLevel != null) {
+            VulnerabilityLevelDefinition levelDef = new VulnerabilityLevelDefinition();
+            levelDef.setLevel(vulnLevel.value());
+            levelDef.setVariant(Variant.valueOf(vulnLevel.variant().name()));
+
+            addFacadeResourceInformation(facadeDef, levelDef, vulnLevel.htmlTemplate());
+
+            AttackVector[] attackVectors = method.getAnnotationsByType(AttackVector.class);
+            for (AttackVector attackVector : attackVectors) {
+                processAttackVector(attackVector, levelDef);
+            }
+            facadeDef.getLevelDescriptionSet().add(levelDef);
+        }
+    }
+
+    private void processAttackVector(AttackVector attackVector, VulnerabilityLevelDefinition levelDef) {
+        List<VulnerabilityType> facadeLevelTypes = new ArrayList<>();
+        org.sasanlabs.vulnerability.types.VulnerabilityType[] vulnerabilityTypes = 
+                attackVector.vulnerabilityExposed();
+
+        for (org.sasanlabs.vulnerability.types.VulnerabilityType type : vulnerabilityTypes) {
+            facadeLevelTypes.add(new VulnerabilityType("Custom", type.name()));
+            if (type.getCweID() != null) {
+                facadeLevelTypes.add(new VulnerabilityType("CWE", String.valueOf(type.getCweID())));
+            }
+            if (type.getWascID() != null) {
+                facadeLevelTypes.add(new VulnerabilityType("WASC", String.valueOf(type.getWascID())));
+            }
+        }
+
+        levelDef.getHints().add(new VulnerabilityLevelHint(
+                facadeLevelTypes, 
+                messageBundle.getString(attackVector.description(), null)));
     }
 }
